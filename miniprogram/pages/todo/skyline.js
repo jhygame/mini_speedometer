@@ -1,4 +1,4 @@
 const createPage = require('./page');
-const { rendererPage } = require('../../utils/renderer-page');
+const { rendererComponent } = require('../../utils/renderer-page');
 
-Page(rendererPage(createPage(), 'todo', 'skyline'));
+Component(rendererComponent(createPage('C'), 'todo', 'skyline'));

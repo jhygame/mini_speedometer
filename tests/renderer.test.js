@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { readFileSync, existsSync } = require('node:fs');
 const { resolve } = require('node:path');
-const { sceneUrl, rendererInfo, rendererPage } = require('../miniprogram/utils/renderer-page');
+const { sceneUrl, rendererInfo, rendererPage, rendererComponent } = require('../miniprogram/utils/renderer-page');
 
 test('scene URLs preserve the chosen renderer except the WebView-only editor', () => {
   for (const scene of ['todo', 'news', 'charts']) {
@@ -62,30 +62,50 @@ test('editor cannot register a Skyline page or navigate to one', () => {
   definition.onRendererChange.call({ data: {} }, { detail: { value: 'skyline' } });
 });
 
-test('both renderer entries register one isolated page from the same factory', () => {
+test('renderer entries, including all Todo variants, register isolated pages from shared factories', () => {
   const previousPage = global.Page;
+  const previousComponent = global.Component;
   const registered = [];
-  global.Page = (definition) => registered.push(definition);
+  global.Page = (definition) => registered.push({ definition, kind: 'Page' });
+  global.Component = (definition) => registered.push({ definition, kind: 'Component' });
   try {
     for (const scene of ['todo', 'news', 'charts']) {
       const createPage = require(`../miniprogram/pages/${scene}/page`);
       assert.equal(typeof createPage, 'function');
       const before = registered.length;
-      for (const entry of ['index', 'skyline']) {
+      const entries = scene === 'todo' ? ['index', 'glass', 'skyline'] : ['index', 'skyline'];
+      for (const entry of entries) {
         const path = require.resolve(`../miniprogram/pages/${scene}/${entry}`);
         delete require.cache[path];
         require(path);
       }
-      assert.equal(registered.length, before + 2);
-      const [webview, skyline] = registered.slice(before);
-      assert.equal(webview.configuredRenderer, 'webview');
-      assert.equal(skyline.configuredRenderer, 'skyline');
+      assert.equal(registered.length, before + entries.length);
+      const webviewEntry = registered[before];
+      const skylineEntry = registered[registered.length - 1];
+      assert.equal(webviewEntry.kind, scene === 'todo' ? 'Component' : 'Page');
+      assert.equal(skylineEntry.kind, webviewEntry.kind);
+      const webview = webviewEntry.definition;
+      const skyline = skylineEntry.definition;
+      assert.equal(webview.data.configuredRenderer, 'webview');
+      assert.equal(skyline.data.configuredRenderer, 'skyline');
       assert.notEqual(webview.data, skyline.data);
-      assert.equal(webview.onRun.toString(), skyline.onRun.toString());
+      assert.equal((webview.methods || webview).onRun.toString(), (skyline.methods || skyline).onRun.toString());
+      if (scene === 'todo') {
+        const glass = registered[before + 1].definition;
+        assert.equal(glass.data.configuredRenderer, 'webview');
+        assert.equal(webview.data.variant, 'A');
+        assert.equal(glass.data.variant, 'B');
+        assert.equal(skyline.data.variant, 'C');
+        assert.notEqual(glass.data, webview.data);
+        assert.notEqual(glass.data, skyline.data);
+        assert.ok([webview, glass, skyline].every((page) => page.data.updateMode === 'uniform'));
+      }
     }
   } finally {
     if (previousPage === undefined) delete global.Page;
     else global.Page = previousPage;
+    if (previousComponent === undefined) delete global.Component;
+    else global.Component = previousComponent;
   }
 });
 
@@ -130,5 +150,75 @@ test('editor entry stays WebView and reports requested and actual engines', () =
   } finally {
     if (previousPage === undefined) delete global.Page;
     else global.Page = previousPage;
+  }
+});
+
+test('project settings do not globally force glass-easel compilation over the mixed ABC page configurations', () => {
+  const root = resolve(__dirname, '..');
+  const shared = JSON.parse(readFileSync(resolve(root, 'project.config.json'), 'utf8'));
+  const privateFile = resolve(root, 'project.private.config.json');
+  const local = existsSync(privateFile) ? JSON.parse(readFileSync(privateFile, 'utf8')) : {};
+  const effective = { ...shared.setting, ...local.setting };
+  assert.equal(shared.setting.useGlassEaselForWxml, false);
+  assert.equal(effective.useGlassEaselForWxml, false);
+});
+
+test('Todo ABC explicitly selects framework/runtime and shares navigation without changing other scenes', () => {
+  const root = resolve(__dirname, '../miniprogram');
+  for (const entry of ['index', 'glass', 'skyline']) {
+    const config = JSON.parse(readFileSync(resolve(root, 'pages', 'todo', `${entry}.json`), 'utf8'));
+    assert.equal(config.componentFramework, entry === 'index' ? 'exparser' : 'glass-easel');
+    assert.equal(config.glassEaselWebview, entry !== 'index');
+    assert.deepEqual(config.usingComponents, {});
+    assert.equal(config.renderer, entry === 'skyline' ? 'skyline' : 'webview');
+    assert.equal(config.navigationStyle, 'custom');
+    assert.equal(config.disableScroll, true);
+    if (entry !== 'index') {
+      assert.ok(readFileSync(resolve(root, 'pages', 'todo', `${entry}.wxml`), 'utf8')
+        .includes('<include src="./index.wxml" />'));
+      assert.ok(readFileSync(resolve(root, 'pages', 'todo', `${entry}.wxss`), 'utf8')
+        .includes('@import "./index.wxss";'));
+    }
+  }
+  const app = JSON.parse(readFileSync(resolve(root, 'app.json'), 'utf8'));
+  assert.equal(app.componentFramework, undefined);
+  assert.equal(app.glassEaselWebview, undefined);
+  assert.equal(app.pages.filter((route) => route.startsWith('pages/todo/')).length, 3);
+  for (const scene of ['news', 'editor', 'charts']) {
+    const config = JSON.parse(readFileSync(resolve(root, 'pages', scene, 'index.json'), 'utf8'));
+    assert.equal(config.renderer, 'webview');
+    assert.equal(config.componentFramework, undefined);
+  }
+});
+
+test('Todo component-page wrapper preserves page lifecycle and renderer metadata', () => {
+  const previousWx = global.wx;
+  global.wx = { getWindowInfo: () => ({ statusBarHeight: 24 }) };
+  try {
+    for (const renderer of ['webview', 'skyline']) {
+      const definition = rendererComponent({
+        data: {},
+        onLoad(value) { this.loadedValue = value; },
+        onHide() { this.hidden = true; },
+        onUnload() { this.unloaded = true; }
+      }, 'todo', renderer);
+      const page = {
+        ...definition.methods,
+        data: definition.data,
+        renderer,
+        setData(patch) { Object.assign(this.data, patch); }
+      };
+      page.onLoad(17);
+      assert.equal(page.loadedValue, 17);
+      assert.equal(page.configuredRenderer, renderer);
+      assert.equal(page.data.actualRenderer, renderer);
+      page.onHide();
+      page.onUnload();
+      assert.equal(page.hidden, true);
+      assert.equal(page.unloaded, true);
+    }
+  } finally {
+    if (previousWx === undefined) delete global.wx;
+    else global.wx = previousWx;
   }
 });

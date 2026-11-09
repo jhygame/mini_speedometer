@@ -1,6 +1,8 @@
 {
   "renderer": "skyline",
   "componentFramework": "glass-easel",
+  "glassEaselWebview": true,
+  "usingComponents": {},
   "navigationStyle": "custom",
   "disableScroll": true
 }

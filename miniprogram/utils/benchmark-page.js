@@ -10,7 +10,10 @@ function reportProgress(report) {
 
 function reportEnvironment(report) {
   const { configuredRenderer, renderer } = report.environment;
-  return `配置 ${configuredRenderer} · 实际 ${renderer} · ${report.clock}`;
+  const description = `配置 ${configuredRenderer} · 实际 ${renderer} · ${report.clock}`;
+  return report.variant
+    ? `${report.variantLabel} · ${report.updateModeLabel} · ${description} · 测试区 ${report.workloadWidthPx}px`
+    : description;
 }
 
 function benchmarkPage(suite, data = {}) {

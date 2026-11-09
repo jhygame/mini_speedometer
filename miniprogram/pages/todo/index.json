@@ -1,1 +1,9 @@
-{ "navigationBarTitleText": "小程序 Speedometer", "renderer": "webview" }
+{
+  "navigationBarTitleText": "小程序 Speedometer",
+  "renderer": "webview",
+  "componentFramework": "exparser",
+  "glassEaselWebview": false,
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "usingComponents": {}
+}

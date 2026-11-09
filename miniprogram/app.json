@@ -5,6 +5,7 @@
     "pages/editor/index",
     "pages/charts/index",
     "pages/todo/skyline",
+    "pages/todo/glass",
     "pages/news/skyline",
     "pages/charts/skyline"
   ],

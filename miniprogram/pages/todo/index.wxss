@@ -1,5 +1,33 @@
 @import "../../styles/workloads.wxss";
 
+.todo-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  margin: 16rpx 0;
+}
+
+.todo-panel {
+  padding: 16px 0;
+}
+
+.todo-workload {
+  width: 320px;
+  margin: 0 auto;
+  font-size: 14px;
+}
+
+.todo-workload .heading {
+  font-size: 16px;
+}
+
+.todo-workload .button {
+  padding: 0 11px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 38px;
+}
+
 .todo-header,
 .entry,
 .todo-row,
@@ -20,31 +48,32 @@
 }
 
 .entry {
-  margin-top: 18rpx;
+  margin-top: 9px;
 }
 
 .todo-input {
   flex: 1;
   min-width: 0;
-  height: 76rpx;
-  padding: 0 18rpx;
-  border: 1rpx solid #d7dfeb;
-  border-radius: 12rpx;
+  height: 38px;
+  padding: 0 9px;
+  border: 1px solid #d7dfeb;
+  border-radius: 6px;
+  font-size: 14px;
 }
 
 .add-button {
   flex: none;
-  margin: 0 0 0 12rpx;
+  margin: 0 0 0 6px;
 }
 
 .todo-empty {
-  margin-top: 24rpx;
+  margin-top: 12px;
   text-align: center;
 }
 
 .todo-row {
-  min-height: 86rpx;
-  border-bottom: 1rpx solid #e9edf3;
+  min-height: 43px;
+  border-bottom: 1px solid #e9edf3;
 }
 
 .todo-group {
@@ -53,11 +82,11 @@
 }
 
 .todo-check {
-  min-height: 86rpx;
+  min-height: 43px;
 }
 
 .todo-text {
-  padding-left: 10rpx;
+  padding-left: 5px;
   word-break: break-all;
 }
 
@@ -66,14 +95,14 @@
   text-decoration: line-through;
 }
 
-.remove-button {
+.todo-workload .remove-button {
   flex: none;
-  margin: 0 0 0 12rpx;
-  padding: 0 16rpx;
+  margin: 0 0 0 6px;
+  padding: 0 8px;
   background: #f8eef1;
   color: #9a304e;
-  font-size: 24rpx;
-  line-height: 58rpx;
+  font-size: 12px;
+  line-height: 29px;
 }
 
 .suite-links {
@@ -92,4 +121,28 @@
   background: #ecf2ff;
   color: #1b4bac;
   text-align: center;
+}
+
+.score-details {
+  margin-top: 20rpx;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  background: #f5f8fc;
+}
+
+.score-line {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.score-step {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+}
+
+.score-value {
+  color: #2457c5;
+  font-weight: 700;
 }

@@ -65,4 +65,19 @@ function rendererPage(definition, scene, configuredRenderer) {
   };
 }
 
-module.exports = { sceneUrl, rendererInfo, rendererPage };
+function rendererComponent(definition, scene, configuredRenderer) {
+  const { data, configuredRenderer: renderer, ...methods } = rendererPage(definition, scene, configuredRenderer);
+  const onLoad = methods.onLoad;
+  return {
+    data,
+    methods: {
+      ...methods,
+      onLoad(...args) {
+        this.configuredRenderer = renderer;
+        onLoad.apply(this, args);
+      }
+    }
+  };
+}
+
+module.exports = { sceneUrl, rendererInfo, rendererPage, rendererComponent };

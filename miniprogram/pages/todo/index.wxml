@@ -1,12 +1,35 @@
-<import src="../../templates/renderer.wxml" />
-<template is="renderer-navigation" data="{{configuredRenderer, statusBarHeight, running}}" />
+<view class="renderer-navigation" style="padding-top: {{statusBarHeight}}px;">
+  <view class="renderer-navigation-content">
+    <button class="home-button" disabled="{{running}}" bindtap="onSceneHome">首页</button>
+    <text class="renderer-navigation-title">Todo · A/B/C 对照</text>
+  </view>
+</view>
 <scroll-view type="list" scroll-y class="benchmark-scroll">
 <view class="screen">
-  <template is="renderer-controls" data="{{configuredRenderer, actualRenderer, rendererFallback, supportsSkyline, running}}" />
+  <view class="renderer-controls">
+    <view class="heading">运行栈</view>
+    <radio-group class="todo-options" bindchange="onVariantChange">
+      <label wx:for="{{variants}}" wx:key="id" class="renderer-option">
+        <radio value="{{item.id}}" checked="{{variant === item.id}}" disabled="{{running || (updateMode === 'incremental' && item.id === 'A')}}" color="#2457c5" />
+        <text>{{item.label}}</text>
+      </label>
+    </radio-group>
+    <view class="heading">更新模式</view>
+    <radio-group class="todo-options" bindchange="onModeChange">
+      <label wx:for="{{modes}}" wx:key="id" class="renderer-option">
+        <radio value="{{item.id}}" checked="{{updateMode === item.id}}" disabled="{{running || (variant === 'A' && item.id === 'incremental')}}" color="#2457c5" />
+        <text>{{item.label}}</text>
+      </label>
+    </radio-group>
+    <view class="hint">实际渲染器：{{actualRenderer}} · 配置框架：{{configuredComponentFramework}}</view>
+    <view class="hint">数组增量接口：{{arraySpliceAvailable ? '可用' : '不可用'}}（接口能力核验，不是独立的框架版本查询）</view>
+    <view wx:if="{{configurationError}}" class="renderer-warning">{{configurationError}}</view>
+    <view class="hint">统一模式用于 A/B/C 主对照；增量模式只比较 B/C，不与统一模式合并计分。切换配置会重置内容和报告，切换模式会清空报告，请先复制结果。</view>
+  </view>
   <view class="intro">
-    <text class="eyebrow">NATIVE TODO / V1</text>
+    <text class="eyebrow">NATIVE TODO / V4</text>
     <text class="title">小程序响应基准</text>
-    <text class="description">逐项新增、完成和删除 100 个待办，测量从处理操作到 setData 回调的耗时。</text>
+    <text class="description">批量新增、完成和删除 100 个待办，分别测量各步骤的同步与异步耗时。</text>
   </view>
 
   <view class="panel">
@@ -18,7 +41,8 @@
 
   <view class="panel">
     <view class="heading">自动测试</view>
-    <view class="hint">2 轮预热 · 10 轮测量 · 每轮 300 次更新</view>
+    <view class="hint">2 轮预热 · 10 轮测量 · 每轮 300 次更新 · 固定 320px 测试区</view>
+    <view class="hint">{{updateMode === 'uniform' ? '统一模式：三个配置都使用相同 setData 补丁，删除提交剩余数组' : '增量模式：删除提交 splice 指令及剩余数，不提交剩余数组'}}</view>
     <view class="status" wx:if="{{progress}}">{{progress}}</view>
     <button wx:if="{{running}}" class="button button-secondary" bindtap="onStop">停止测试</button>
     <button wx:else class="button button-primary" disabled="{{!ready}}" bindtap="onRun">开始测试</button>
@@ -36,31 +60,72 @@
         <text>{{item.label}}</text>
         <text class="phase-time">阶段中位数 {{item.phaseMedianMs}} ms</text>
       </view>
-      <view class="hint">单次响应 P50 {{item.responseP50Ms}} ms · P95 {{item.responseP95Ms}} ms</view>
-      <view class="hint">{{item.sampleCount}} 个样本 · 每轮 {{item.setDataCallsPerRound}} 次提交 · 约 {{item.payloadBytesPerRound}} B</view>
+      <view class="hint">Sync 中位数 {{item.syncMedianMs}} ms · Async 中位数 {{item.asyncMedianMs}} ms</view>
+      <view class="hint">{{item.sampleCount}} 个步骤样本 · 每轮 {{item.setDataCallsPerRound}} 次 setData · {{item.spliceArrayCallsPerRound}} 次数组增量删除</view>
+      <view class="hint">{{item.payloadKind === 'splice+setData-descriptor' ? '增量删除指令及计数补丁' : 'setData 补丁'}}的 JSON 估算约 {{item.payloadBytesPerRound}} B，不是实际通信字节</view>
+    </view>
+    <button wx:if="{{scoreDetails}}" class="button button-secondary" bindtap="onToggleScoreDetails">
+      {{showScoreDetails ? '收起计分计算过程' : '查看计分计算过程'}}
+    </button>
+    <view wx:if="{{showScoreDetails}}" class="score-details">
+      <view class="heading">计分计算过程</view>
+      <view class="hint">{{scoreDetails.protocol}}</view>
+      <view class="score-line">① 每步耗时 t = Sync + Async（ms）</view>
+      <view class="score-line">② 套件总耗时 T = 新增 + 完成 + 删除</view>
+      <view class="score-line">③ 当前只运行一个 Todo 套件，G = T，不对三个步骤取几何平均</view>
+      <view class="score-line">④ 本轮分数 S = 1000 / G，最终对有效正式轮次的分数取算术平均</view>
+      <view class="hint">Sync 包含业务更新计算及 100 次提交；{{updateMode === 'uniform' ? '删除每次通过 setData 提交剩余数组。' : '删除每次先 spliceArrayDataOnPath，再用 setData 更新计数并应用删除。'}}Async 等待全部 setData 回调、wx.nextTick 及布局查询回调，不是纯绘制耗时。</view>
+      <view class="hint">{{scoreDetails.sampleNote}}</view>
+      <view class="hint">以下使用逐轮样本，不使用上方中位数。数值仅在展示时保留 4 位小数，极小或极大值使用科学计数法；计算使用未舍入的原始值，故以 ≈ 表示显示精度。</view>
+      <view wx:if="{{!scoreDetails.sampleCount}}" class="status">暂无有效正式轮次，无法计算分数。</view>
+      <view wx:for="{{scoreDetails.rounds}}" wx:for-item="round" wx:key="attempt" class="result">
+        <view class="result-heading">有效第 {{round.number}} 轮（尝试 #{{round.attempt}}）</view>
+        <view wx:for="{{round.steps}}" wx:for-item="step" wx:key="id" class="score-step">
+          <view>{{step.label}}：Sync + Async</view>
+          <view class="score-line">{{step.equation}}</view>
+        </view>
+        <view class="score-line">{{round.totalEquation}}</view>
+        <view class="score-line">单套件 G = T</view>
+        <view class="score-line score-value">{{round.scoreEquation}}</view>
+      </view>
+      <view wx:if="{{scoreDetails.sampleCount}}" class="result">
+        <view class="result-heading">{{scoreDetails.meanTitle}}</view>
+        <view wx:for="{{scoreDetails.meanLines}}" wx:key="*this" class="score-line">{{item}}</view>
+        <view class="hint">不是先平均各轮耗时再取倒数；未达到目标轮数时仅显示临时分数。</view>
+      </view>
+      <view class="result">
+        <view class="result-heading">95% 置信区间</view>
+        <block wx:if="{{scoreDetails.confidenceLines.length}}">
+          <view wx:for="{{scoreDetails.confidenceLines}}" wx:key="*this" class="score-line">{{item}}</view>
+          <view class="hint">n 为有效正式轮次数；该区间描述均值的不确定性，不是 P95 或单次操作耗时范围。</view>
+        </block>
+        <view wx:else class="hint">{{scoreDetails.confidenceNote}}</view>
+      </view>
     </view>
     <button class="button button-secondary" bindtap="onCopyReport">复制原始 JSON</button>
   </view>
 
-  <view class="panel">
-    <view class="todo-header">
-      <text class="heading">待办列表</text>
-      <text class="todo-count" data-remaining="{{remaining}}">剩余 {{remaining}} 项</text>
-    </view>
-    <view class="entry">
-      <input class="todo-input" value="{{draft}}" disabled="{{running}}" placeholder="输入待办事项"
-        confirm-type="done" bindinput="onInput" bindconfirm="onAdd" />
-      <button class="button button-primary add-button" disabled="{{running}}" bindtap="onAdd">新增</button>
-    </view>
-    <view wx:if="{{items.length === 0}}" id="todo-empty" class="todo-empty">暂无待办</view>
-    <view wx:for="{{items}}" wx:key="id" class="todo-row" data-id="{{item.id}}" data-state="{{item.done ? 'done' : 'open'}}">
-      <checkbox-group class="todo-group" data-id="{{item.id}}" bindchange="onToggle">
-        <label class="todo-check">
-          <checkbox value="done" checked="{{item.done}}" disabled="{{running}}" color="#2457c5" />
-          <text class="todo-text {{item.done ? 'is-done' : ''}}">{{item.title}}</text>
-        </label>
-      </checkbox-group>
-      <button class="button remove-button" data-id="{{item.id}}" disabled="{{running}}" bindtap="onRemove">删除</button>
+  <view class="panel todo-panel">
+    <view class="todo-workload">
+      <view class="todo-header">
+        <text class="heading">待办列表</text>
+        <text class="todo-count" data-remaining="{{remaining}}">剩余 {{remaining}} 项</text>
+      </view>
+      <view class="entry">
+        <input class="todo-input" value="{{draft}}" disabled="{{running}}" placeholder="输入待办事项"
+          confirm-type="done" bindinput="onInput" bindconfirm="onAdd" />
+        <button class="button button-primary add-button" disabled="{{running}}" bindtap="onAdd">新增</button>
+      </view>
+      <view wx:if="{{items.length === 0}}" id="todo-empty" class="todo-empty">暂无待办</view>
+      <view wx:for="{{items}}" wx:key="id" class="todo-row" data-id="{{item.id}}" data-state="{{item.done ? 'done' : 'open'}}">
+        <checkbox-group class="todo-group" data-id="{{item.id}}" bindchange="onToggle">
+          <label class="todo-check">
+            <checkbox value="done" checked="{{item.done}}" disabled="{{running}}" color="#2457c5" />
+            <text class="todo-text {{item.done ? 'is-done' : ''}}">{{item.title}}</text>
+          </label>
+        </checkbox-group>
+        <button class="button remove-button" data-id="{{item.id}}" disabled="{{running}}" bindtap="onRemove">删除</button>
+      </view>
     </view>
   </view>
 </view>

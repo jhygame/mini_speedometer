@@ -79,7 +79,7 @@ function summarize(rounds, steps, responseColumn) {
     const samples = [];
     const phases = rounds.map((round) => {
       const phase = round.steps[index];
-      phase.operations.forEach((operation) => samples.push(operation[responseColumn]));
+      if (phase.operations) phase.operations.forEach((operation) => samples.push(operation[responseColumn]));
       return phase;
     });
     samples.sort((a, b) => a - b);
@@ -88,13 +88,23 @@ function summarize(rounds, steps, responseColumn) {
       id: step.id,
       label: step.label,
       phaseMedianMs: median(phaseTimes).toFixed(2),
-      responseP50Ms: median(samples).toFixed(2),
-      responseP95Ms: samples[Math.ceil(samples.length * 0.95) - 1].toFixed(2),
-      sampleCount: samples.length
+      sampleCount: phases.length
     };
+    if (phases[0].syncMs !== undefined) {
+      summary.syncMedianMs = median(phases.map((phase) => phase.syncMs).sort((a, b) => a - b)).toFixed(2);
+      summary.asyncMedianMs = median(phases.map((phase) => phase.asyncMs).sort((a, b) => a - b)).toFixed(2);
+    } else {
+      summary.responseP50Ms = median(samples).toFixed(2);
+      summary.responseP95Ms = samples[Math.ceil(samples.length * 0.95) - 1].toFixed(2);
+      summary.sampleCount = samples.length;
+    }
     if (phases[0].setDataCalls !== undefined) {
       summary.setDataCallsPerRound = phases[0].setDataCalls;
       summary.payloadBytesPerRound = Math.round(phases.reduce((sum, phase) => sum + phase.estimatedPayloadBytes, 0) / phases.length);
+      if (phases[0].spliceArrayCalls !== undefined) {
+        summary.spliceArrayCallsPerRound = phases[0].spliceArrayCalls;
+        summary.payloadKind = phases[0].payloadKind;
+      }
     }
     return summary;
   });
@@ -117,6 +127,7 @@ async function runSuite(page, run, suite) {
   const highResolution = typeof performance !== 'undefined' && typeof performance.now === 'function';
   const now = highResolution ? () => performance.now() : Date.now;
   const operationColumns = suite.operationColumns || ['responseMs'];
+  const scoreAggregation = suite.scoreAggregation || 'phase-geomean';
   const report = {
     protocol: suite.protocol,
     startedAt: new Date().toISOString(),
@@ -147,13 +158,14 @@ async function runSuite(page, run, suite) {
         if (run.reason) throw new Error(run.reason);
         steps.push({ id: step.id, ...result });
       }
-      const totalMs = steps.reduce((total, step) => {
-        if (!Number.isFinite(step.elapsedMs) || step.elapsedMs < 0) {
+      const phaseTimesMs = steps.map((step) => {
+        if (!Number.isFinite(step.elapsedMs) || step.elapsedMs < 0 ||
+          (step.elapsedMs === 0 && scoreAggregation !== 'suite-total')) {
           throw new Error('阶段耗时无效，无法计分');
         }
-        return total + step.elapsedMs;
-      }, 0);
-      const scoring = scoreRound([totalMs]);
+        return step.elapsedMs;
+      });
+      const scoring = scoreRound(phaseTimesMs, scoreAggregation);
       if (warmup) report.warmupCompleted++;
       else report.rounds.push({ attempt, steps, scoring });
     } catch (error) {
@@ -165,7 +177,7 @@ async function runSuite(page, run, suite) {
   report.status = run.reason ? 'stopped' : report.rounds.length === MEASURED_ROUNDS ? 'complete' : 'incomplete';
   report.stopReason = run.reason;
   report.summary = summarize(report.rounds, suite.steps, operationColumns.indexOf('responseMs'));
-  report.scoring = summarizeScores(report.rounds.map((round) => round.scoring), report.status === 'complete');
+  report.scoring = summarizeScores(report.rounds.map((round) => round.scoring), report.status === 'complete', scoreAggregation);
   return report;
 }
 
